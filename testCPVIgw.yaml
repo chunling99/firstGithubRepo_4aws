@@ -8,3 +8,10 @@ Resources:
       Tags:
       - Key: Name
         Value: lcl-vpc-01
+  #インターネットゲートウェイ作成とアタッチ）
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: lcl_igw_01
