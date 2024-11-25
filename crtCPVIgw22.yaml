@@ -1,3 +1,4 @@
+Resources:
   #VPC１つ作成
   myVPC:
     Type: AWS::EC2::VPC
