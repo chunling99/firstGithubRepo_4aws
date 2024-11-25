@@ -1,10 +1,11 @@
 #VPC１つ作成
 myVPC:
-Type: AWS::EC2::VPC
-Properties:
-  CidrBlock: 10.1.0.0/16
-  EnableDnsSupport: 'true'
-  EnableDnsHostnames: 'true'
-  Tags:
-  - Key: Name
-    Value: !Sub lcl-prj-vpc-01
+  Type: AWS::EC2::VPC
+  Properties:
+    CidrBlock: 10.1.0.0/16
+    EnableDnsSupport: 'true'
+    EnableDnsHostnames: 'true'
+    Tags:
+    - Key: Name
+      Value: lcl-prj-vpc-01
+
