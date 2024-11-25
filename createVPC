@@ -1,0 +1,276 @@
+# AWSTemplateFormatVersion: 2010-09-09
+# Description: |
+
+Parameters:
+  author:
+    Description: Please input your project name
+    Type: String
+    Default: lcl-prj
+
+  envType:
+    Description: Please select your env type
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - test
+    - prod
+
+  keypair:
+    Description: Please set your key pair
+    Type: AWS::EC2::KeyPair::KeyName
+    # Default: -
+
+    # Metadata:
+
+    # Mappings:
+
+Conditions:
+  ngwConCreate: !Equals [ !Ref envType, prod ]
+
+Resources:
+  #VPC１つ作成
+  myVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}-vpc-01
+
+  #2Pub_subnetと2pri_subnet１つずつ作成
+  mySubnetpub1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: "ap-northeast-1a"
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_subnet_pub_1a
+
+  mySubnetpri1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: "ap-northeast-1a"
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_subnet_pri_1a
+
+  mySubnetpub1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: "ap-northeast-1c"
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_subnet_pub_1c
+
+  mySubnetpri1c:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref myVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: "ap-northeast-1c"
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_subnet_pri_1c
+
+  #インターネットゲートウェイ作成とアタッチ）
+  myInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_igw_01
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: myVPC
+      InternetGatewayId:
+        Ref: myInternetGateway
+
+  #ルート３つ定義（2Pub_subnetのため1Pub用ルートを作成、2pri_subnetに各自ルート１つずつ作成）
+  myRTBPubBoth1a1c:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_rtb_pub_both1a1c
+
+  myRTBPri1a:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_rtb_pri_1a
+
+  myRTBPri1c:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: myVPC
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_rtb_pri_1c
+
+  #ルート定義にサブネットを関連付け（2Pub_subnetは1Pub用ルートを共有、2pri_subnetは各自ルート使用）
+  mySubnetRTBAssociationPub1a:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: mySubnetpub1a
+      RouteTableId:
+        Ref: myRTBPubBoth1a1c
+
+  mySubnetRTBAssociationPub1c:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: mySubnetpub1c
+      RouteTableId:
+        Ref: myRTBPubBoth1a1c
+
+  mySubnetRTBAssociationPri1a:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: mySubnetpri1a
+      RouteTableId:
+        Ref: myRTBPri1a
+
+  mySubnetRTBAssociationPri1c:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: mySubnetpri1c
+      RouteTableId:
+        Ref: myRTBPri1c
+
+  #インターネットゲートウェイにルート定義を通す
+  myRoute:
+    Type: AWS::EC2::Route
+    # DependsOn: GatewayToInternet
+    Properties:
+      RouteTableId:
+        Ref: myRTBPubBoth1a1c
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: myInternetGateway
+
+  #NATゲートウェイ
+  myNATGateway:
+    Condition: ngwConCreate
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref mySubnetpub1c
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_nat_gw_pub
+  NATGatewayEIP:
+    Condition: ngwConCreate
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+  RouteNATGateway:
+    Condition: ngwConCreate
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref myRTBPri1c
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref myNATGateway
+
+  #踏み台サーバーのセキュリティグループ定義
+  jumpServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: for basical server Allow SSH inbound rule
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp #ssh
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: -1 #OUTBOUNDは全許可
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_jump_sg_pub
+
+  #WEBサーバーのセキュリティグループ定義
+  webServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: for basical server Allow SSH inbound rule
+      VpcId: !Ref myVPC
+      SecurityGroupIngress:
+      #INBOUNDは一部許可
+      - IpProtocol: tcp #ssh
+        FromPort: 22
+        ToPort: 22
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp #http
+        FromPort: 80
+        ToPort: 80
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: -1 #OUTBOUNDは全許可
+        FromPort: -1
+        ToPort: -1
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_web_sg_pub
+
+  #踏み台Pubサーバー
+  jumpEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-08ce76bae392de7dc
+      KeyName:
+        Ref: keypair
+      NetworkInterfaces:
+      - AssociatePublicIpAddress: true
+        DeviceIndex: 0
+        GroupSet:
+        - Ref: jumpServerSecurityGroup
+        SubnetId:
+          Ref: mySubnetpub1a #Pubに指定すべき
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_jump_ec2_4pub_fromStack
+
+  #Pri WEBサーバー
+  webEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-08ce76bae392de7dc
+      KeyName:
+        Ref: keypair
+      SecurityGroupIds:
+      - Ref: webServerSecurityGroup
+      SubnetId:
+        Ref: mySubnetpri1a #Priに指定すべき
+      Tags:
+      - Key: Name
+        Value: !Sub ${author}_web_ec2_4pri_fromStack
+  # Transform:
+
+  # Outputs:
