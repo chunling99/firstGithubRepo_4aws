@@ -15,3 +15,10 @@ Resources:
       Tags:
       - Key: Name
         Value: lcl_igw_01
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: myVPC
+      InternetGatewayId:
+        Ref: myInternetGateway
